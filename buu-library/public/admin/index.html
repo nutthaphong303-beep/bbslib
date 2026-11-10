@@ -27,7 +27,15 @@ button:disabled{opacity:.5}
 </head>
 <body>
 <div class="wrap">
-  <h1>เพิ่มงานวิจัย</h1>
+  <form id="lg" class="card" hidden>
+    <h1 style="margin-top:0">เข้าสู่ระบบหลังบ้าน</h1>
+    <label for="pw">รหัสผ่าน</label>
+    <input id="pw" type="password" autocomplete="current-password" required style="width:100%;padding:8px 10px;border:1px solid #c9b3bc;border-radius:8px;font:inherit;margin-bottom:12px">
+    <button>เข้าสู่ระบบ</button><span id="lgmsg" role="alert" style="margin-left:12px;color:#a33"></span>
+  </form>
+</div>
+<div class="wrap" id="app" hidden>
+  <h1>เพิ่มงานวิจัย <button id="out" type="button" style="font-size:.8rem;padding:4px 12px;margin-left:8px;background:#9d7d8b">ออกจากระบบ</button></h1>
   <form id="f" class="card grid">
     <div class="full"><label for="pdf">ไฟล์ PDF</label><input id="pdf" type="file" accept="application/pdf" required></div>
     <div class="full"><img id="prev" alt="ตัวอย่างปก"></div>
@@ -80,7 +88,20 @@ $('#list').onclick=async e=>{
   const b=e.target.closest('.del');if(!b||!confirm('ลบงานวิจัยนี้ถาวรหรือไม่'))return;
   await fetch('/api/admin/papers/'+b.dataset.id,{method:'DELETE'});list();
 };
-list();
+
+// ล็อกอิน
+async function boot(){
+  const ok=(await fetch('/api/admin/me')).ok;
+  $('#lg').hidden=ok;$('#app').hidden=!ok;
+  if(ok)list();else $('#pw').focus();
+}
+$('#lg').onsubmit=async e=>{
+  e.preventDefault();$('#lgmsg').textContent='';
+  const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:$('#pw').value})});
+  if(r.ok){$('#pw').value='';boot()}else $('#lgmsg').textContent=(await r.json()).error||'เข้าสู่ระบบไม่สำเร็จ';
+};
+$('#out').onclick=async()=>{await fetch('/api/logout',{method:'POST'});boot()};
+boot();
 </script>
 </body>
 </html>
