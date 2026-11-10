@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ห้องสมุดงานวิจัย คณะบริหารธุรกิจ มหาวิทยาลัยบูรพา</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
+<style>
+:root{--cw:112px;--ch:158px;--row:204px}
+.brand{display:flex;flex-direction:column;line-height:1.25;margin-right:auto}
+.brand b{font-size:1.15rem;font-weight:700}
+.brand span{font-size:.8rem;color:var(--muted)}
+.search{position:relative;width:min(340px,100%)}
+#sug{position:absolute;left:0;right:0;top:calc(100% + 6px);margin:0;padding:4px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 30px #3a2a2026;display:none;z-index:10}
+#sug li{list-style:none;padding:8px 12px;border-radius:8px;cursor:pointer}
+#sug li small{display:block;color:var(--muted)}
+#sug li.on,#sug li:hover{background:var(--sand)}
+.seg{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#fff}
+.seg button{border:0;border-radius:0;background:none;padding:7px 16px}
+.seg button[aria-pressed=true]{background:var(--brown);color:#fff}
+.lead{max-width:1200px;margin:36px auto 8px;padding:0 24px}
+.lead h2{margin:0;font-size:1.6rem;font-weight:300}
+.lead p{margin:4px 0 0;color:var(--muted)}
+#shelf{max-width:1200px;margin:0 auto 48px;padding:0 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));justify-items:center;min-height:var(--row);
+  background:repeating-linear-gradient(to bottom,transparent 0,transparent calc(var(--row) - 12px),#cfae8f calc(var(--row) - 12px),#cfae8f calc(var(--row) - 8px),var(--brown) calc(var(--row) - 8px),var(--brown) var(--row))}
+.book{width:var(--cw);height:var(--row);padding-top:30px;display:block;text-decoration:none}
+.book img,.book .ph{width:var(--cw);height:var(--ch);object-fit:cover;display:block;border-radius:2px;box-shadow:3px 4px 10px #3a2a2040,inset -3px 0 0 #ffffff55;transition:transform .2s}
+.book .ph{background:var(--sand);color:var(--brown);font-size:.75rem;padding:10px;overflow:hidden}
+.book:hover img,.book:hover .ph,.book:focus-visible img{transform:translateY(-6px)}
+#empty{padding:50px 24px;text-align:center;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){.book img{transition:none}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><b>ห้องสมุดงานวิจัย</b><span>คณะบริหารธุรกิจ มหาวิทยาลัยบูรพา</span></div>
+  <div class="search">
+    <input id="q" type="search" placeholder="ค้นหาชื่อเรื่อง ผู้วิจัย คำสำคัญ" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="sug">
+    <ul id="sug" role="listbox"></ul>
+  </div>
+  <div class="seg sort" role="group" aria-label="เรียงลำดับ">
+    <button data-s="name" aria-pressed="false">ชื่อเรื่อง</button>
+    <button data-s="date" aria-pressed="true">ล่าสุด</button>
+  </div>
+</header>
+<div class="lead"><h2>ชั้นหนังสืองานวิจัย</h2><p>เลือกปกเพื่อเริ่มอ่าน</p></div>
+<main>
+  <div id="shelf" aria-live="polite"></div>
+  <p id="empty" hidden>ไม่พบงานวิจัยที่ตรงกับคำค้น ลองใช้คำอื่นหรือล้างช่องค้นหา</p>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let sort='date',timer,idx=-1,items=[];
+
+async function load(){
+  const r=await fetch(`/api/papers?q=${encodeURIComponent($('#q').value)}&sort=${sort}`);
+  const d=await r.json();
+  $('#shelf').innerHTML=Array.isArray(d)?d.map(p=>`<a class="book" href="/read.html?id=${p.id}" title="${esc(p.title)}">
+    ${p.cover_key?`<img loading="lazy" src="/api/file/${p.cover_key}" alt="${esc(p.title)}">`:`<div class="ph">${esc(p.title)}</div>`}</a>`).join(''):'';
+  $('#empty').hidden=Array.isArray(d)&&d.length>0;
+}
+document.querySelectorAll('.sort button').forEach(b=>b.onclick=()=>{
+  sort=b.dataset.s;document.querySelectorAll('.sort button').forEach(x=>x.setAttribute('aria-pressed',x===b));load();
+});
+
+// autocomplete
+const sug=$('#sug');
+function show(list){
+  items=list;idx=-1;
+  sug.innerHTML=list.map((p,i)=>`<li role="option" data-i="${i}">${esc(p.title)}<small>${esc(p.author||'')}</small></li>`).join('');
+  sug.style.display=list.length?'block':'none';$('#q').setAttribute('aria-expanded',!!list.length);
+}
+$('#q').addEventListener('input',()=>{
+  clearTimeout(timer);
+  const v=$('#q').value.trim();
+  if(!v){show([]);load();return}
+  timer=setTimeout(async()=>{show(await (await fetch('/api/suggest?q='+encodeURIComponent(v))).json());load()},180);
+});
+$('#q').addEventListener('keydown',e=>{
+  const lis=[...sug.children];
+  if((e.key==='ArrowDown'||e.key==='ArrowUp')&&lis.length){
+    e.preventDefault();idx=(idx+(e.key==='ArrowDown'?1:-1)+lis.length)%lis.length;
+    lis.forEach((l,i)=>l.classList.toggle('on',i===idx));
+  }else if(e.key==='Enter'&&idx>=0){location.href='/read.html?id='+items[idx].id}
+  else if(e.key==='Escape')show([]);
+});
+sug.addEventListener('click',e=>{const li=e.target.closest('li');if(li)location.href='/read.html?id='+items[li.dataset.i].id});
+document.addEventListener('click',e=>{if(!e.target.closest('.search'))show([])});
+load();
+</script>
+</body>
+</html>
