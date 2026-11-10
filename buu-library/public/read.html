@@ -4,31 +4,32 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>อ่านงานวิจัย</title>
-<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
 <style>
-*{box-sizing:border-box}
-body{margin:0;height:100vh;display:flex;flex-direction:column;background:#3a2630;color:#fff;font-family:'Sarabun',system-ui,sans-serif;-webkit-user-select:none;user-select:none}
-.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 14px;background:#9d7d8b;color:#2b1d24}
-.bar a,.bar button{color:#2b1d24;background:#e6d3db;border:0;border-radius:999px;padding:6px 14px;font:inherit;text-decoration:none;cursor:pointer}
-.bar button:hover,.bar a:hover{background:#f3e6eb}
-.bar h1{font-size:1rem;margin:0;flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body{height:100vh;display:flex;flex-direction:column;-webkit-user-select:none;user-select:none}
+.topbar{gap:8px;padding:10px 16px}
+.topbar h1{font-size:1rem;font-weight:600;margin:0;flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pn{min-width:4.5em;text-align:center;color:var(--muted)}
 .zoom{display:flex;align-items:center;gap:6px}
 .zoom button{padding:6px 12px}
-#zp{min-width:3.2em;text-align:center}
-#stage{flex:1;position:relative;overflow:hidden}
+#zp{min-width:3.2em;text-align:center;color:var(--muted)}
+#stage{flex:1;position:relative;overflow:hidden;background:#efe6da}
 #flip{height:100%;display:flex;align-items:center;justify-content:center;padding:12px}
-#single{height:100%;overflow:auto;padding:12px 0}
-#cv{display:block;margin:0 auto;background:#fff;box-shadow:0 4px 18px #0007}
+#single{height:100%;overflow:auto;padding:20px 0}
+#single.anim{overflow:hidden!important}
+#sheet{position:relative;margin:0 auto;perspective:2400px}
+#cv{display:block;background:#fff;box-shadow:0 10px 30px #3a2a2033,0 1px 3px #3a2a2022}
+.turn{position:absolute;left:0;top:0;transform-origin:left center;backface-visibility:hidden;-webkit-backface-visibility:hidden;background:#fff;box-shadow:0 0 40px #3a2a2066;pointer-events:none}
 .page{background:#fff}
-.page img{width:100%;height:100%;display:block;-webkit-user-drag:none;user-drag:none}
-[hidden]{display:none!important}
+.page img{width:100%;height:100%;display:block;-webkit-user-drag:none}
 #msg{text-align:center;padding:40px}
 @media print{body{display:none}}
 </style>
 </head>
 <body>
-<div class="bar">
-  <a href="/">← ชั้นหนังสือ</a>
+<div class="topbar">
+  <a class="btn" href="/">← ชั้นหนังสือ</a>
   <h1 id="t">กำลังโหลด…</h1>
   <button id="mode" type="button">หน้าเดียว</button>
   <button id="prev" type="button" aria-label="หน้าก่อนหน้า">ก่อนหน้า</button>
@@ -42,7 +43,7 @@ body{margin:0;height:100vh;display:flex;flex-direction:column;background:#3a2630
 </div>
 <div id="stage">
   <div id="flip" hidden><div id="book"></div></div>
-  <div id="single" hidden><canvas id="cv"></canvas></div>
+  <div id="single" hidden><div id="sheet"><canvas id="cv"></canvas></div></div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
@@ -50,13 +51,14 @@ body{margin:0;height:100vh;display:flex;flex-direction:column;background:#3a2630
 const $=s=>document.querySelector(s);
 pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-let pdf,n=0,vp,mode='flip',cur=0,z=1,pf=null,token=0;
+let pdf,n=0,vp,mode='flip',cur=0,z=1,pf=null,token=0,busy=false;
 const imgs=[],done=new Set();
+const RM=matchMedia('(prefers-reduced-motion:reduce)').matches;
 
-// ลายน้ำ BURAPHA ฝังลงในภาพของหน้านั้นเลย (ไม่ใช่แค่ชั้นซ้อนทับ)
+// ลายน้ำ BURAPHA ฝังลงในภาพของหน้านั้นเลย
 function wm(ctx,w,h){
   ctx.save();
-  ctx.globalAlpha=.13;ctx.fillStyle='#4e3441';
+  ctx.globalAlpha=.12;ctx.fillStyle='#6b4a33';
   const fs=Math.round(w/11);
   ctx.font=`700 ${fs}px Arial,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.translate(w/2,h/2);ctx.rotate(-Math.PI/6);
@@ -80,7 +82,7 @@ async function pageCanvas(i,scale){
 
 const upd=()=>{$('#pn').textContent=`${cur+1} / ${n}`};
 
-// ---------- โหมดพลิกหน้า ----------
+// ---------- โหมดพลิกหน้า (เปิดหนังสือ 2 หน้า) ----------
 async function renderFlip(i){
   if(i<0||i>=n||done.has(i))return;done.add(i);
   imgs[i].src=(await pageCanvas(i,1.6)).toDataURL('image/jpeg',.85);
@@ -101,21 +103,48 @@ function initFlip(){
   pf.on('flip',e=>{cur=e.data;upd();preload(cur)});
 }
 
-// ---------- โหมดหน้าเดียว + ซูม ----------
-async function drawSingle(resetScroll){
-  const t=++token,box=$('#single');
-  const base=Math.min((box.clientWidth-24)/vp.width,2.5);
-  const css=base*z;
+// ---------- โหมดหน้าเดียว + ซูม + แอนิเมชันพลิกหน้า ----------
+async function renderSingle(i){
+  const box=$('#single');
+  const base=Math.min((box.clientWidth-24)/vp.width,2.5),css=base*z;
   let px=css*Math.min(devicePixelRatio||1,2);
-  if(vp.width*px>4000)px=4000/vp.width;           // กันภาพใหญ่เกินที่เบราว์เซอร์รับไหว
-  const c=await pageCanvas(cur,px);
-  if(t!==token)return;                              // มีคำสั่งใหม่แทรก ทิ้งผลเก่า
+  if(vp.width*px>4000)px=4000/vp.width;
+  return{c:await pageCanvas(i,px),w:vp.width*css,h:vp.height*css};
+}
+function paint(r){
   const cv=$('#cv');
-  cv.width=c.width;cv.height=c.height;
-  cv.style.width=vp.width*css+'px';cv.style.height=vp.height*css+'px';
-  cv.getContext('2d').drawImage(c,0,0);
+  cv.width=r.c.width;cv.height=r.c.height;
+  cv.style.width=r.w+'px';cv.style.height=r.h+'px';
+  $('#sheet').style.width=r.w+'px';
+  cv.getContext('2d').drawImage(r.c,0,0);
   $('#zp').textContent=Math.round(z*100)+'%';
-  if(resetScroll)box.scrollTop=0;
+}
+async function drawSingle(reset){
+  const t=++token,r=await renderSingle(cur);
+  if(t!==token)return;
+  paint(r);if(reset)$('#single').scrollTop=0;
+}
+
+// พลิกหน้า: ไปข้างหน้า = หน้าเดิมพลิกออกไปทางซ้าย / ย้อนกลับ = หน้าก่อนหน้าพลิกกลับมาทับ
+async function turn(i){
+  if(busy||i<0||i>=n||i===cur)return;
+  busy=true;
+  const fwd=i>cur,old=$('#cv'),box=$('#single');
+  const r=await renderSingle(i);
+  if(RM){cur=i;paint(r);upd();box.scrollTop=0;busy=false;return}
+  const src=fwd?old:r.c,ov=document.createElement('canvas');
+  ov.className='turn';ov.width=src.width;ov.height=src.height;
+  ov.getContext('2d').drawImage(src,0,0);
+  ov.style.width=fwd?old.style.width:r.w+'px';ov.style.height=fwd?old.style.height:r.h+'px';
+  box.scrollTop=0;box.classList.add('anim');
+  cur=i;upd();
+  if(fwd)paint(r);                                  // หน้าใหม่รออยู่ข้างใต้
+  $('#sheet').appendChild(ov);
+  const f=[{transform:'rotateY(0deg)',filter:'brightness(1)'},{transform:'rotateY(-100deg)',filter:'brightness(.78)'}];
+  if(!fwd)f.reverse();
+  try{await ov.animate(f,{duration:650,easing:'cubic-bezier(.45,.05,.25,1)',fill:'forwards'}).finished}catch(_){}
+  if(!fwd)paint(r);
+  ov.remove();box.classList.remove('anim');busy=false;
 }
 
 async function setMode(m){
@@ -126,16 +155,12 @@ async function setMode(m){
   else drawSingle(true);
   upd();
 }
-
-function go(i){
-  if(i<0||i>=n)return;
-  if(mode==='flip'){pf.flip(i)}else{cur=i;upd();drawSingle(true)}
-}
 function step(d){
-  if(mode==='flip'){d>0?pf.flipNext():pf.flipPrev()}else go(cur+d);
+  if(mode==='flip'){d>0?pf.flipNext():pf.flipPrev()}else turn(cur+d);
 }
 function zoom(d){
-  if(mode==='flip')setMode('single');               // ซูมได้เฉพาะโหมดหน้าเดียว จึงสลับให้อัตโนมัติ
+  if(busy)return;
+  if(mode==='flip')setMode('single');
   z=Math.min(4,Math.max(.5,Math.round((z+d)*100)/100));
   drawSingle(false);
 }
@@ -143,7 +168,7 @@ function zoom(d){
 (async()=>{
   const id=new URLSearchParams(location.search).get('id');
   const r=await fetch('/api/papers/'+id);
-  if(!r.ok){document.body.innerHTML='<p id="msg">ไม่พบงานวิจัยนี้ <a href="/" style="color:#fff">กลับไปที่ชั้นหนังสือ</a></p>';return}
+  if(!r.ok){document.body.innerHTML='<p id="msg">ไม่พบงานวิจัยนี้ <a href="/">กลับไปที่ชั้นหนังสือ</a></p>';return}
   const paper=await r.json();
   document.title=paper.title;$('#t').textContent=paper.title;
 
@@ -161,10 +186,10 @@ function zoom(d){
     else if(e.key==='-')zoom(-.25);
   });
   $('#single').addEventListener('wheel',e=>{if(e.ctrlKey){e.preventDefault();zoom(e.deltaY<0?.25:-.25)}},{passive:false});
-  let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{if(mode==='single')drawSingle(false)},250)});
+  let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{if(mode==='single'&&!busy)drawSingle(false)},250)});
   $('#stage').addEventListener('contextmenu',e=>e.preventDefault());
 
-  setMode(innerWidth<820?'single':'flip');           // มือถือเริ่มที่หน้าเดียว
+  setMode(innerWidth<820?'single':'flip');
 })();
 </script>
 </body>
