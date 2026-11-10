@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>หลังบ้าน – เพิ่มงานวิจัย</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:'Sarabun',system-ui,sans-serif;background:#f4eef1;color:#2b1d24}
+.wrap{max-width:860px;margin:0 auto;padding:24px 16px}
+h1{font-size:1.3rem}
+.card{background:#fff;border-radius:12px;padding:20px;margin-bottom:24px;box-shadow:0 1px 4px #0002}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label{display:block;font-size:.9rem;margin-bottom:4px}
+input[type=text],input[type=number]{width:100%;padding:8px 10px;border:1px solid #c9b3bc;border-radius:8px;font:inherit}
+.full{grid-column:1/-1}
+button{font:inherit;border:0;border-radius:8px;padding:9px 18px;background:#4e3441;color:#fff;cursor:pointer}
+button.del{background:#a33;padding:5px 12px}
+button:disabled{opacity:.5}
+#prev{width:90px;height:127px;object-fit:cover;border-radius:3px;box-shadow:2px 2px 6px #0004;display:none}
+.row{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #eee}
+.row span{flex:1}
+#st{margin-left:12px}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>เพิ่มงานวิจัย</h1>
+  <form id="f" class="card grid">
+    <div class="full"><label for="pdf">ไฟล์ PDF</label><input id="pdf" type="file" accept="application/pdf" required></div>
+    <div class="full"><img id="prev" alt="ตัวอย่างปก"></div>
+    <div class="full"><label for="title">ชื่อเรื่อง</label><input id="title" type="text" required></div>
+    <div><label for="author">ผู้วิจัย</label><input id="author" type="text"></div>
+    <div><label for="year">ปีที่พิมพ์</label><input id="year" type="number"></div>
+    <div class="full"><label for="keywords">คำสำคัญ (คั่นด้วยเครื่องหมายจุลภาค)</label><input id="keywords" type="text"></div>
+    <div class="full"><button id="go">อัปโหลด</button><span id="st" role="status"></span></div>
+  </form>
+  <div class="card"><h2 style="margin-top:0;font-size:1.1rem">งานวิจัยทั้งหมด</h2><div id="list"></div></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let coverBlob=null;
+
+// สร้างปกจากหน้าแรกของ PDF ในเบราว์เซอร์
+$('#pdf').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  if(!$('#title').value)$('#title').value=f.name.replace(/\.pdf$/i,'');
+  $('#st').textContent='กำลังสร้างปก…';
+  const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;
+  const pg=await pdf.getPage(1),v=pg.getViewport({scale:600/pg.getViewport({scale:1}).width});
+  const c=document.createElement('canvas');c.width=v.width;c.height=v.height;
+  await pg.render({canvasContext:c.getContext('2d'),viewport:v}).promise;
+  coverBlob=await new Promise(r=>c.toBlob(r,'image/jpeg',.85));
+  $('#prev').src=URL.createObjectURL(coverBlob);$('#prev').style.display='block';$('#st').textContent='';
+};
+
+$('#f').onsubmit=async e=>{
+  e.preventDefault();
+  const fd=new FormData();
+  fd.append('pdf',$('#pdf').files[0]);
+  if(coverBlob)fd.append('cover',coverBlob,'cover.jpg');
+  for(const k of['title','author','year','keywords'])fd.append(k,$('#'+k).value);
+  $('#go').disabled=true;$('#st').textContent='กำลังอัปโหลด…';
+  const r=await fetch('/api/admin/papers',{method:'POST',body:fd});
+  $('#go').disabled=false;
+  if(r.ok){$('#st').textContent='อัปโหลดแล้ว';$('#f').reset();$('#prev').style.display='none';coverBlob=null;list()}
+  else $('#st').textContent='ผิดพลาด: '+((await r.json()).error||r.status);
+};
+
+async function list(){
+  const d=await (await fetch('/api/papers?sort=date')).json();
+  $('#list').innerHTML=d.length?d.map(p=>`<div class="row"><span>${esc(p.title)}<br><small>${esc(p.author||'')}</small></span><button class="del" data-id="${p.id}">ลบ</button></div>`).join(''):'ยังไม่มีงานวิจัย เลือกไฟล์ PDF ด้านบนเพื่อเริ่มเพิ่ม';
+}
+$('#list').onclick=async e=>{
+  const b=e.target.closest('.del');if(!b||!confirm('ลบงานวิจัยนี้ถาวรหรือไม่'))return;
+  await fetch('/api/admin/papers/'+b.dataset.id,{method:'DELETE'});list();
+};
+list();
+</script>
+</body>
+</html>
