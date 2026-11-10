@@ -41,6 +41,23 @@ async function callScript(env, body) {
   return r.json();
 }
 
+// ---------- ล็อกอินด้วยรหัสผ่าน (คุกกี้ลงลายเซ็น HMAC) ----------
+const enc = new TextEncoder();
+async function sign(env, msg) {
+  const k = await crypto.subtle.importKey('raw', enc.encode(env.ADMIN_PASSWORD), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const s = await crypto.subtle.sign('HMAC', k, enc.encode(msg));
+  return [...new Uint8Array(s)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function isAdmin(request, env) {
+  if (request.headers.get('cf-access-authenticated-user-email')) return true; // ผ่าน Cloudflare Access (ถ้าตั้งไว้)
+  if (!env.ADMIN_PASSWORD) return false;
+  const c = /(?:^|;\s*)admin=([^;]+)/.exec(request.headers.get('cookie') || '');
+  if (!c) return false;
+  const [exp, sig] = c[1].split('.');
+  return Number(exp) > Date.now() && sig === await sign(env, exp);
+}
+const cookie = v => `admin=${v}; Path=/; HttpOnly; Secure; SameSite=Strict`;
+
 export async function onRequest({ request, env, waitUntil }) {
   const url = new URL(request.url);
   const p = url.pathname.replace(/^\/api\//, '').split('/').filter(Boolean);
@@ -86,9 +103,25 @@ export async function onRequest({ request, env, waitUntil }) {
     }
 
     // ---------- หลังบ้าน (ต้องผ่าน Cloudflare Access) ----------
+    if (p[0] === 'login' && m === 'POST') {
+      const { password } = await request.json().catch(() => ({}));
+      if (!env.ADMIN_PASSWORD || password !== env.ADMIN_PASSWORD) {
+        await new Promise(r => setTimeout(r, 800)); // หน่วงเล็กน้อยกันการเดารหัส
+        return json({ error: 'รหัสผ่านไม่ถูกต้อง' }, 401);
+      }
+      const exp = Date.now() + 12 * 3600 * 1000;
+      return new Response('{"ok":true}', { headers: {
+        'content-type': 'application/json',
+        'set-cookie': cookie(`${exp}.${await sign(env, String(exp))}`) + '; Max-Age=43200'
+      } });
+    }
+    if (p[0] === 'logout' && m === 'POST')
+      return new Response('{"ok":true}', { headers: { 'content-type': 'application/json', 'set-cookie': cookie('') + '; Max-Age=0' } });
+
     if (p[0] === 'admin') {
-      if (!request.headers.get('cf-access-authenticated-user-email') && !url.hostname.startsWith('localhost'))
+      if (!(await isAdmin(request, env)) && !url.hostname.startsWith('localhost'))
         return json({ error: 'ไม่มีสิทธิ์' }, 401);
+      if (p[1] === 'me') return json({ ok: true });
 
       if (p[1] === 'papers' && !p[2] && m === 'POST') {
         const f = await request.formData();
