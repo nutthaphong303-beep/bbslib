@@ -1,0 +1,12 @@
+name = "buu-biz-library"
+pages_build_output_dir = "public"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "buu-library"
+database_id = "ใส่-database_id-ที่ได้จาก-wrangler-d1-create"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "buu-library-files"
