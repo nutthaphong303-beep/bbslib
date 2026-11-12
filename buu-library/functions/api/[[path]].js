@@ -3,6 +3,14 @@
 
 const json = (d, s = 200) =>
   new Response(JSON.stringify(d), { status: s, headers: { 'content-type': 'application/json; charset=utf-8' } });
+// ถ้าตั้งตัวแปร APPS_SCRIPT_URL ไม่สำเร็จ ให้วางลิงก์ Web app (ลงท้าย /exec) ในเครื่องหมายคำพูดนี้แทนได้
+const SCRIPT_URL_FALLBACK = 'https://script.google.com/macros/s/AKfycbyvWy6FoduFQi95jnQ1CftYWs8uPLwvEK9gcVR6Haq2QzMhTwnp0cVLeRvtlYHhQvsfew/exec';
+function scriptUrl(env) {
+  const u = String(env.APPS_SCRIPT_URL || SCRIPT_URL_FALLBACK).trim();
+  if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u))
+    throw new Error('ยังไม่ได้ตั้งค่าลิงก์ Apps Script (APPS_SCRIPT_URL) หรือลิงก์ไม่ถูกต้อง');
+  return u;
+}
 const norm = s => String(s ?? '').toLowerCase();
 const CACHE_KEY = () => new Request('https://cache.internal/papers');
 
@@ -10,7 +18,7 @@ const CACHE_KEY = () => new Request('https://cache.internal/papers');
 async function allPapers(env, waitUntil) {
   let res = await caches.default.match(CACHE_KEY());
   if (!res) {
-    const r = await fetch(env.APPS_SCRIPT_URL);
+    const r = await fetch(scriptUrl(env));
     const d = await r.json();
     if (!Array.isArray(d)) throw new Error(d.error || 'อ่านข้อมูลจาก Google Sheet ไม่ได้');
     const rows = d.map(x => ({
@@ -33,7 +41,7 @@ function b64(buf) {
 }
 
 async function callScript(env, body) {
-  const r = await fetch(env.APPS_SCRIPT_URL, {
+  const r = await fetch(scriptUrl(env), {
     method: 'POST',
     headers: { 'content-type': 'text/plain' },
     body: JSON.stringify({ ...body, secret: env.APPS_SCRIPT_SECRET })
@@ -139,6 +147,24 @@ export async function onRequest({ request, env, waitUntil }) {
         if (res.error) return json(res, 500);
         await caches.default.delete(CACHE_KEY());
         return json(res, 201);
+      }
+
+      // แก้ไขงานวิจัย: เปลี่ยนไฟล์ PDF / ปก เฉพาะเมื่อส่งมาใหม่
+      if (p[1] === 'papers' && p[2] && m === 'POST') {
+        const f = await request.formData();
+        const pdf = f.get('pdf'), cover = f.get('cover');
+        const title = (f.get('title') || '').trim();
+        if (!title) return json({ error: 'ต้องมีชื่อเรื่อง' }, 400);
+        if (pdf && pdf.size > 25 * 1024 * 1024) return json({ error: 'ไฟล์ใหญ่เกิน 25 MB' }, 413);
+        const res = await callScript(env, {
+          action: 'update', id: p[2], title,
+          author: f.get('author') || '', year: f.get('year') || '', keywords: f.get('keywords') || '',
+          pdf: pdf && pdf.size ? b64(await pdf.arrayBuffer()) : '',
+          cover: cover && cover.size ? b64(await cover.arrayBuffer()) : ''
+        });
+        if (res.error) return json(res, 500);
+        await caches.default.delete(CACHE_KEY());
+        return json(res);
       }
 
       if (p[1] === 'papers' && p[2] && m === 'DELETE') {
